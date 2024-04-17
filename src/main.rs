@@ -1,14 +1,12 @@
 use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use teloxide::{
-    dispatching::UpdateHandler,
-    prelude::*,
-    types::MessageId,
-    utils::command::BotCommands,
-    RequestError,
+    dispatching::UpdateHandler, payloads::SendPoll, prelude::*, requests::JsonRequest, types::MessageId,
+    utils::command::BotCommands, RequestError,
 };
 
 const LUNCH_POLL_MSG_ID_KEY: &str = "lunch_poll_msg_id";
+const LUNCH_POLL_ID_KEY: &str = "lunch_poll_id";
 
 #[shuttle_runtime::main]
 async fn shuttle_main(
@@ -81,8 +79,12 @@ impl shuttle_runtime::Service for BotService {
 
 fn build_update_handler() -> UpdateHandler<RequestError> {
     // TODO: add initial filter if chat is a group
-    Update::filter_message()
-        .branch(dptree::entry().filter_command::<Command>().endpoint(command_handler))
+    dptree::entry()
+        .branch(
+            Update::filter_message()
+                .filter_command::<Command>()
+                .endpoint(command_handler),
+        )
         .branch(Update::filter_poll_answer().endpoint(poll_answer_handler))
 }
 
@@ -109,15 +111,23 @@ async fn help(bot: &Bot, msg: &Message) -> anyhow::Result<()> {
 
 async fn vote(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyhow::Result<()> {
     // TODO: add Ukrainian to cSpell in editor
-    let msg = bot.send_poll(msg.chat.id, "Обід?", ["Так".into(), "Ні".into()]).await?;
+    let send_poll_payload = SendPoll::new(msg.chat.id, "Обід?", ["Так".into(), "Ні".into()]).is_anonymous(false);
+    let request = JsonRequest::new(bot.clone(), send_poll_payload);
+    let msg = request.await?;
+    // log::info!("Poll msg id: {}", msg.id);
 
-    bot_service.persist.save::<MessageId>(LUNCH_POLL_MSG_ID_KEY, msg.id)?;
+    // TODO: when migrated to RDBMS, wrap these 2 operations in a transaction
+    bot_service.persist.save(LUNCH_POLL_MSG_ID_KEY, msg.id)?;
+    bot_service.persist.save(
+        LUNCH_POLL_ID_KEY,
+        msg.poll().expect("Unable to get Poll from poll Message").id.as_str(),
+    )?;
 
     Ok(())
 }
 
 async fn random(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyhow::Result<()> {
-    if let Ok(poll_msg_id) = bot_service.persist.load::<MessageId>("lunch_poll_msg_id") {
+    if let Ok(poll_msg_id) = bot_service.persist.load::<MessageId>(LUNCH_POLL_MSG_ID_KEY) {
         bot_service.persist.remove("lunch_poll_msg_id")?; // comes first because it's more reliable than stop_poll
         bot.stop_poll(msg.chat.id, poll_msg_id).await?;
     } else {
@@ -128,6 +138,13 @@ async fn random(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyho
     Ok(())
 }
 
-async fn poll_answer_handler(bot_service: BotService, bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
+async fn poll_answer_handler(bot_service: BotService, bot: Bot, answer: PollAnswer) -> ResponseResult<()> {
+    // log::info!("{:?}", msg);
+
+    if let Ok(poll_id) = bot_service.persist.load::<String>(LUNCH_POLL_ID_KEY) {
+        if answer.poll_id == poll_id {
+            log::info!("Matching poll answer received: {:?}", answer);
+        }
+    }
     Ok(())
 }
