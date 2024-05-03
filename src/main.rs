@@ -1,12 +1,18 @@
+use std::collections::BTreeSet;
+
 use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use teloxide::{
-    dispatching::UpdateHandler, payloads::SendPoll, prelude::*, requests::JsonRequest, types::MessageId,
+    dispatching::UpdateHandler, payloads::SendPoll, prelude::*, requests::JsonRequest, types::{MessageId, User},
     utils::command::BotCommands, RequestError,
 };
 
 const LUNCH_POLL_MSG_ID_KEY: &str = "lunch_poll_msg_id";
 const LUNCH_POLL_ID_KEY: &str = "lunch_poll_id";
+const LUNCH_POLL_YES_VOTER_IDS_KEY: &str = "lunch_poll_yes_voter_ids";
+const YES_ANSWER_ID: i32 = 0;
+
+type VoterIds = BTreeSet<User>;
 
 #[shuttle_runtime::main]
 async fn shuttle_main(
@@ -48,9 +54,21 @@ impl shuttle_runtime::Service for BotService {
                 shuttle_persist::PersistError::RemoveFile(_) => {
                     log::info!("No previous persisted poll was found on bot start, nothing to clear")
                 }
-                _ => panic!("{err}"),
+                _ => panic!("error clearing previous poll data: {err}"),
             }
         }
+
+        let voter_ids = match self.persist.load::<VoterIds>(LUNCH_POLL_YES_VOTER_IDS_KEY) {
+            Ok(mut voter_ids) => {
+                voter_ids.clear();
+                voter_ids
+            },
+            _ => vec![],
+        };
+        if let Err(err) = self.persist.save(LUNCH_POLL_YES_VOTER_IDS_KEY, voter_ids) {
+            panic!("error initializing empty \"yes\" voters vec: {err}")
+        }
+
 
         let bot = Bot::new(&self.token);
 
@@ -141,9 +159,28 @@ async fn random(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyho
 async fn poll_answer_handler(bot_service: BotService, bot: Bot, answer: PollAnswer) -> ResponseResult<()> {
     // log::info!("{:?}", msg);
 
+    // if let Ok(poll_id) = bot_service.persist.load::<String>(LUNCH_POLL_ID_KEY) {
+    //     if answer.poll_id == poll_id && answer.option_ids.as_slice() == [YES_ANSWER_ID] {
+    //         // log::info!("Matching poll answer received: {:?}", answer);
+
+
+    //         if let Ok(mut voter_ids) = bot_service.persist.load::<VoterIds>(LUNCH_POLL_YES_VOTER_IDS_KEY) {
+    //             voter_ids.insert(value)
+
+    //         }
+
+    //     }
+    // }
     if let Ok(poll_id) = bot_service.persist.load::<String>(LUNCH_POLL_ID_KEY) {
-        if answer.poll_id == poll_id {
-            log::info!("Matching poll answer received: {:?}", answer);
+        if answer.poll_id == poll_id && answer.option_ids.as_slice() == [YES_ANSWER_ID] {
+            // log::info!("Matching poll answer received: {:?}", answer);
+
+
+            if let Ok(mut voter_ids) = bot_service.persist.load::<VoterIds>(LUNCH_POLL_YES_VOTER_IDS_KEY) {
+                voter_ids.insert(value)
+
+            }
+
         }
     }
     Ok(())
