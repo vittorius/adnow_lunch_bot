@@ -1,18 +1,23 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
+use anyhow::bail;
+use rand::seq::IteratorRandom;
 use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use teloxide::{
-    dispatching::UpdateHandler, payloads::SendPoll, prelude::*, requests::JsonRequest, types::{MessageId, User},
-    utils::command::BotCommands, RequestError,
+    dispatching::UpdateHandler,
+    payloads::SendPoll,
+    prelude::*,
+    requests::JsonRequest,
+    types::{MessageId, User},
+    utils::command::BotCommands,
+    RequestError,
 };
 
 const LUNCH_POLL_MSG_ID_KEY: &str = "lunch_poll_msg_id";
 const LUNCH_POLL_ID_KEY: &str = "lunch_poll_id";
-const LUNCH_POLL_YES_VOTER_IDS_KEY: &str = "lunch_poll_yes_voter_ids";
+const LUNCH_POLL_YES_VOTERS_KEY: &str = "lunch_poll_yes_voters";
 const YES_ANSWER_ID: i32 = 0;
-
-type VoterIds = BTreeSet<User>;
 
 #[shuttle_runtime::main]
 async fn shuttle_main(
@@ -23,6 +28,8 @@ async fn shuttle_main(
 
     Ok(BotService { token, persist })
 }
+
+type VoterSet = HashSet<User>;
 
 // Customize this struct with things from `shuttle_main` needed in `bind`,
 // such as secrets or database connections
@@ -58,17 +65,16 @@ impl shuttle_runtime::Service for BotService {
             }
         }
 
-        let voter_ids = match self.persist.load::<VoterIds>(LUNCH_POLL_YES_VOTER_IDS_KEY) {
-            Ok(mut voter_ids) => {
-                voter_ids.clear();
-                voter_ids
-            },
-            _ => vec![],
+        let voters = match self.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY) {
+            Ok(mut voters) => {
+                voters.clear();
+                voters
+            }
+            _ => HashSet::new(),
         };
-        if let Err(err) = self.persist.save(LUNCH_POLL_YES_VOTER_IDS_KEY, voter_ids) {
+        if let Err(err) = self.persist.save(LUNCH_POLL_YES_VOTERS_KEY, voters) {
             panic!("error initializing empty \"yes\" voters vec: {err}")
         }
-
 
         let bot = Bot::new(&self.token);
 
@@ -144,10 +150,56 @@ async fn vote(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyhow:
     Ok(())
 }
 
+struct TestVoter {
+    name: String,
+}
+
+impl TestVoter {
+    fn mention(&self) -> Option<String> {
+        None
+    }
+
+    fn full_name(&self) -> String {
+        self.name.clone()
+    }
+}
+
 async fn random(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyhow::Result<()> {
     if let Ok(poll_msg_id) = bot_service.persist.load::<MessageId>(LUNCH_POLL_MSG_ID_KEY) {
         bot_service.persist.remove("lunch_poll_msg_id")?; // comes first because it's more reliable than stop_poll
         bot.stop_poll(msg.chat.id, poll_msg_id).await?;
+
+        // FIXME: uncomment for real testing
+        // let Ok(voters) = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY) else {
+        //     bot.send_message(msg.chat.id, "Помилка завантаження даних.").await?;
+        //     bail!(r#"Was unable to load "yes" votes by {} key"#, LUNCH_POLL_YES_VOTERS_KEY);
+        // };
+        let voters = [
+            TestVoter {
+                name: "Victor Zagorodny".into()
+            },
+            TestVoter {
+                name: "Андрей Дмитриев".into()
+            },
+            TestVoter {
+                name: "Кирилл".into()
+            },
+            TestVoter {
+                name: "adnow Office Lunch Bot (dev)".into()
+            }
+        ];
+
+        let mut rng = rand::thread_rng();
+        let voters_str = voters
+            .iter()
+            .choose_multiple(&mut rng, voters.iter().count())
+            .iter()
+            .map(|user| user.mention().or(Some(user.full_name())).unwrap())
+            .collect::<Vec<_>>()
+            .join("\n");
+        // FIXME: uncomment and fix types
+        // bot.send_message(msg.chat.id, format!("Щасливці у порядку приорітету:\n{voters_str}"))
+        //     .await?;
     } else {
         bot.send_message(msg.chat.id, "Створіть нове опитування, використовуючи команду /vote.")
             .await?;
@@ -163,7 +215,6 @@ async fn poll_answer_handler(bot_service: BotService, bot: Bot, answer: PollAnsw
     //     if answer.poll_id == poll_id && answer.option_ids.as_slice() == [YES_ANSWER_ID] {
     //         // log::info!("Matching poll answer received: {:?}", answer);
 
-
     //         if let Ok(mut voter_ids) = bot_service.persist.load::<VoterIds>(LUNCH_POLL_YES_VOTER_IDS_KEY) {
     //             voter_ids.insert(value)
 
@@ -175,12 +226,9 @@ async fn poll_answer_handler(bot_service: BotService, bot: Bot, answer: PollAnsw
         if answer.poll_id == poll_id && answer.option_ids.as_slice() == [YES_ANSWER_ID] {
             // log::info!("Matching poll answer received: {:?}", answer);
 
-
-            if let Ok(mut voter_ids) = bot_service.persist.load::<VoterIds>(LUNCH_POLL_YES_VOTER_IDS_KEY) {
-                voter_ids.insert(value)
-
+            if let Ok(mut voters) = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY) {
+                voters.insert(answer.user);
             }
-
         }
     }
     Ok(())

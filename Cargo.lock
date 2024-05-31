@@ -23,6 +23,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "log",
+ "rand",
  "shuttle-persist",
  "shuttle-runtime",
  "teloxide",
