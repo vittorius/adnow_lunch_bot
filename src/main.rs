@@ -1,7 +1,10 @@
+use std::backtrace::{self, Backtrace};
 use std::collections::{BTreeSet, HashSet};
 
 use anyhow::bail;
 use rand::seq::IteratorRandom;
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use teloxide::{
@@ -112,15 +115,16 @@ fn build_update_handler() -> UpdateHandler<RequestError> {
         .branch(Update::filter_poll_answer().endpoint(poll_answer_handler))
 }
 
-async fn command_handler(mut bot_service: BotService, bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
+async fn command_handler(bot_service: BotService, bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
     let cmd_result = match cmd {
         Command::Help => help(&bot, &msg).await,
-        Command::Vote => vote(&bot, &msg, &mut bot_service).await,
-        Command::Random => random(&bot, &msg, &mut bot_service).await,
+        Command::Vote => vote(&bot, &msg, &bot_service).await,
+        Command::Random => random(&bot, &msg, &bot_service).await,
     };
 
     if let Err(err) = cmd_result {
-        log::error!("{}", err)
+        let _ = bot.send_message(msg.chat.id, "Помилка виконання.").await;
+        log::error!("{err}, {}", err.backtrace())
     }
 
     Ok(())
@@ -133,7 +137,7 @@ async fn help(bot: &Bot, msg: &Message) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn vote(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyhow::Result<()> {
+async fn vote(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Result<()> {
     // TODO: add Ukrainian to cSpell in editor
     let send_poll_payload = SendPoll::new(msg.chat.id, "Обід?", ["Так".into(), "Ні".into()]).is_anonymous(false);
     let request = JsonRequest::new(bot.clone(), send_poll_payload);
@@ -164,70 +168,72 @@ impl TestVoter {
     }
 }
 
-async fn random(bot: &Bot, msg: &Message, bot_service: &mut BotService) -> anyhow::Result<()> {
+async fn random(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Result<()> {
+    // FIXME: print error message to the chat and exit if no "yes"-voted participants
+    let request: JsonRequest<_>;
+
     if let Ok(poll_msg_id) = bot_service.persist.load::<MessageId>(LUNCH_POLL_MSG_ID_KEY) {
         bot_service.persist.remove("lunch_poll_msg_id")?; // comes first because it's more reliable than stop_poll
         bot.stop_poll(msg.chat.id, poll_msg_id).await?;
 
-        // FIXME: uncomment for real testing
         // let Ok(voters) = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY) else {
         //     bot.send_message(msg.chat.id, "Помилка завантаження даних.").await?;
-        //     bail!(r#"Was unable to load "yes" votes by {} key"#, LUNCH_POLL_YES_VOTERS_KEY);
+        //     bail!(r#"unable to load "yes" votes by {} key: {:?}"#, LUNCH_POLL_YES_VOTERS_KEY);
         // };
-        let voters = [
-            TestVoter {
-                name: "Victor Zagorodny".into()
-            },
-            TestVoter {
-                name: "Андрей Дмитриев".into()
-            },
-            TestVoter {
-                name: "Кирилл".into()
-            },
-            TestVoter {
-                name: "adnow Office Lunch Bot (dev)".into()
-            }
-        ];
 
-        let mut rng = rand::thread_rng();
+        let voters = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY)?;
+
+        // TODO: remove after covered with unit tests
+        // let mut voters = [
+        //     TestVoter {
+        //         name: "Victor Zagorodny".into(),
+        //     },
+        //     TestVoter {
+        //         name: "Андрей Дмитриев".into(),
+        //     },
+        //     TestVoter {
+        //         name: "Кирилл".into()
+        //     },
+        //     TestVoter {
+        //         name: "adnow Office Lunch Bot (dev)".into(),
+        //     },
+        // ];
+
+        let mut rng = thread_rng();
+        // let voters_str = voters
+        //     .iter()
+        //     .choose_multiple(&mut rng, voters.iter().count())
+        //     .iter()
+        //     .map(|user| user.mention().unwrap_or(user.full_name()))
+        //     .collect::<Vec<_>>()
+        //     .join("\n");
+        let mut voters = Vec::from_iter(voters);
+        voters.shuffle(&mut rng);
         let voters_str = voters
             .iter()
-            .choose_multiple(&mut rng, voters.iter().count())
-            .iter()
-            .map(|user| user.mention().or(Some(user.full_name())).unwrap())
+            .map(|user| user.mention().unwrap_or(user.full_name()))
             .collect::<Vec<_>>()
             .join("\n");
-        // FIXME: uncomment and fix types
-        // bot.send_message(msg.chat.id, format!("Щасливці у порядку приорітету:\n{voters_str}"))
-        //     .await?;
+        request = bot.send_message(msg.chat.id, format!("Щасливці у порядку приорітету:\n{voters_str}"));
     } else {
-        bot.send_message(msg.chat.id, "Створіть нове опитування, використовуючи команду /vote.")
-            .await?;
+        request = bot.send_message(msg.chat.id, "Створіть нове опитування, використовуючи команду /vote.");
     }
 
+    request.send().await?;
     Ok(())
 }
 
-async fn poll_answer_handler(bot_service: BotService, bot: Bot, answer: PollAnswer) -> ResponseResult<()> {
-    // log::info!("{:?}", msg);
-
-    // if let Ok(poll_id) = bot_service.persist.load::<String>(LUNCH_POLL_ID_KEY) {
-    //     if answer.poll_id == poll_id && answer.option_ids.as_slice() == [YES_ANSWER_ID] {
-    //         // log::info!("Matching poll answer received: {:?}", answer);
-
-    //         if let Ok(mut voter_ids) = bot_service.persist.load::<VoterIds>(LUNCH_POLL_YES_VOTER_IDS_KEY) {
-    //             voter_ids.insert(value)
-
-    //         }
-
-    //     }
-    // }
+async fn poll_answer_handler(bot_service: BotService, _bot: Bot, answer: PollAnswer) -> ResponseResult<()> {
     if let Ok(poll_id) = bot_service.persist.load::<String>(LUNCH_POLL_ID_KEY) {
         if answer.poll_id == poll_id && answer.option_ids.as_slice() == [YES_ANSWER_ID] {
-            // log::info!("Matching poll answer received: {:?}", answer);
+            log::info!("Matching poll answer received: {:?}", answer);
 
-            if let Ok(mut voters) = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY) {
-                voters.insert(answer.user);
+            let mut voters = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY)?;
+            log::info!("before insert: {voters:?}");
+            voters.insert(answer.user);
+            log::info!("after insert: {voters:?}");
+            if let Err(err) = bot_service.persist.save(LUNCH_POLL_YES_VOTERS_KEY, voters) {
+                log::error!("{err}, {}", Backtrace::force_capture());
             }
         }
     }
