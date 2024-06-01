@@ -9,6 +9,6 @@ shuttle-runtime = "0.43.0"
 teloxide = { version = "0.12", features = ["macros"] }
 log = "0.4"
 tokio = { version = "1.8", features = ["rt-multi-thread", "macros"] }
-anyhow = "1.0.81"
+anyhow = { version = "1.0.81", features = ["backtrace"] }
 shuttle-persist = "0.43.0"
 rand = "0.8.5"
