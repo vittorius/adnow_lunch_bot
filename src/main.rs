@@ -1,10 +1,8 @@
-use std::backtrace::{self, Backtrace};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
-use anyhow::bail;
-use rand::seq::IteratorRandom;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use teloxide::{
@@ -45,15 +43,17 @@ struct BotService {
     persist: PersistInstance,
 }
 
-#[derive(BotCommands, Clone)]
-#[command(rename_rule = "lowercase", description = "Підтримуються наступні команди:")]
-enum Command {
-    #[command(description = "Показати цей хелп")]
-    Help,
-    #[command(description = "Проголосувати за обід")]
-    Vote,
-    #[command(description = "Кинути кубик :)")]
-    Random,
+impl BotService {
+    fn persist_save<T: Serialize>(&self, key: &str, value: T) -> anyhow::Result<()> {
+        Ok(self.persist.save(key, serde_json::to_string(&value)?)?)
+    }
+
+    fn persist_load<T>(&self, key: &str) -> anyhow::Result<T>
+    where
+        T: for<'de> Deserialize<'de>,
+    {
+        Ok(self.persist.load::<T>(key)?)
+    }
 }
 
 #[shuttle_runtime::async_trait]
@@ -105,6 +105,17 @@ impl shuttle_runtime::Service for BotService {
 
         Ok(())
     }
+}
+
+#[derive(BotCommands, Clone)]
+#[command(rename_rule = "lowercase", description = "Підтримуються наступні команди:")]
+enum Command {
+    #[command(description = "Показати цей хелп")]
+    Help,
+    #[command(description = "Проголосувати за обід")]
+    Vote,
+    #[command(description = "Кинути кубик :)")]
+    Random,
 }
 
 fn build_update_handler() -> UpdateHandler<RequestError> {
