@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt};
 
 use rand::seq::SliceRandom;
 use rand::thread_rng;
@@ -30,9 +30,6 @@ async fn shuttle_main(
     Ok(BotService { token, persist })
 }
 
-// FIXME: bincode won't serialize teloxide::types::User;
-// idea: use Postgres
-// idea: create own distilled type for User and implement From/Into
 type VoterSet = HashSet<User>;
 
 // Customize this struct with things from `shuttle_main` needed in `bind`,
@@ -44,25 +41,32 @@ struct BotService {
 }
 
 impl BotService {
+    // HACK: bincode won't serialize teloxide::types::User because of its macro annotations;
+    // we're using a hack here: first, serialize into a JSON String, then persist it into Shuttle (which uses bincode)
     fn persist_save<T: Serialize>(&self, key: &str, value: T) -> anyhow::Result<()> {
         Ok(self.persist.save(key, serde_json::to_string(&value)?)?)
     }
 
+    // HACK: bincode won't serialize teloxide::types::User because of its macro annotations;
+    // we're using a hack here: first, serialize into a JSON String, then persist it into Shuttle (which uses bincode)
     fn persist_load<T>(&self, key: &str) -> anyhow::Result<T>
     where
         T: for<'de> Deserialize<'de>,
     {
-        Ok(self.persist.load::<T>(key)?)
+        Ok(serde_json::from_str::<T>(self.persist.load::<String>(key)?.as_str())?)
+    }
+
+    fn persist_remove(&self, key: &str) -> anyhow::Result<(), shuttle_persist::PersistError> {
+        self.persist.remove(key)
     }
 }
 
 #[shuttle_runtime::async_trait]
 impl shuttle_runtime::Service for BotService {
     async fn bind(self, _addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        // Start your service and bind to the socket address
         log::info!("starting bot");
 
-        if let Err(err) = self.persist.remove(LUNCH_POLL_MSG_ID_KEY) {
+        if let Err(err) = self.persist_remove(LUNCH_POLL_MSG_ID_KEY) {
             match err {
                 shuttle_persist::PersistError::RemoveFile(_) => {
                     log::info!("no previous persisted poll was found on bot start, nothing to clear")
@@ -71,15 +75,8 @@ impl shuttle_runtime::Service for BotService {
             }
         }
 
-        let voters = match self.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY) {
-            Ok(mut voters) => {
-                voters.clear();
-                voters
-            }
-            _ => HashSet::new(),
-        };
-        if let Err(err) = self.persist.save(LUNCH_POLL_YES_VOTERS_KEY, voters) {
-            panic!("error initializing empty \"yes\" voters vec: {err}")
+        if let Err(err) = self.persist_save(LUNCH_POLL_YES_VOTERS_KEY, VoterSet::new()) {
+            panic!("error initializing empty \"yes\" voters set: {err}")
         }
 
         let bot = Bot::new(&self.token);
@@ -107,15 +104,23 @@ impl shuttle_runtime::Service for BotService {
     }
 }
 
-#[derive(BotCommands, Clone)]
+#[derive(BotCommands, Clone, Debug)]
 #[command(rename_rule = "lowercase", description = "Підтримуються наступні команди:")]
 enum Command {
     #[command(description = "Показати цей хелп")]
     Help,
     #[command(description = "Проголосувати за обід")]
-    Vote,
-    #[command(description = "Кинути кубик :)")]
-    Random,
+    Lunch,
+    #[command(description = "Завершити голосування і вибрати переможців :)")]
+    Go,
+    #[command(description = "Скасувати поточне голосування")]
+    Cancel,
+}
+
+impl fmt::Display for Command {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", format!("{:?}", self).to_lowercase())
+    }
 }
 
 fn build_update_handler() -> UpdateHandler<RequestError> {
@@ -130,10 +135,13 @@ fn build_update_handler() -> UpdateHandler<RequestError> {
 }
 
 async fn command_handler(bot_service: BotService, bot: Bot, msg: Message, cmd: Command) -> ResponseResult<()> {
+    use Command::*;
+
     let cmd_result = match cmd {
-        Command::Help => help(&bot, &msg).await,
-        Command::Vote => vote(&bot, &msg, &bot_service).await,
-        Command::Random => random(&bot, &msg, &bot_service).await,
+        Help => help(&bot, &msg).await,
+        Lunch => lunch(&bot, &msg, &bot_service).await,
+        Go => go(&bot, &msg, &bot_service).await,
+        Cancel => cancel(&bot, &msg, &bot_service).await,
     };
 
     if let Err(err) = cmd_result {
@@ -150,16 +158,14 @@ async fn help(bot: &Bot, msg: &Message) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn vote(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Result<()> {
-    // TODO: add Ukrainian to cSpell in editor
+async fn lunch(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Result<()> {
     let send_poll_payload = SendPoll::new(msg.chat.id, "Обід?", ["Так".into(), "Ні".into()]).is_anonymous(false);
     let request = JsonRequest::new(bot.clone(), send_poll_payload);
     let msg = request.await?;
-    // log::info!("Poll msg id: {}", msg.id);
 
     // TODO: when migrated to Postgres, wrap these 2 operations in a transaction
-    bot_service.persist.save(LUNCH_POLL_MSG_ID_KEY, msg.id)?;
-    bot_service.persist.save(
+    bot_service.persist_save(LUNCH_POLL_MSG_ID_KEY, msg.id)?;
+    bot_service.persist_save(
         LUNCH_POLL_ID_KEY,
         msg.poll().expect("Unable to get Poll from poll Message").id.as_str(),
     )?;
@@ -167,15 +173,21 @@ async fn vote(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Res
     Ok(())
 }
 
-async fn random(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Result<()> {
-    // TODO: print error message to the chat and exit if no "yes"-voted participants
+async fn go(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Result<()> {
     let request: JsonRequest<_>;
 
-    if let Ok(poll_msg_id) = bot_service.persist.load::<MessageId>(LUNCH_POLL_MSG_ID_KEY) {
-        bot_service.persist.remove("lunch_poll_msg_id")?; // comes first because it's more reliable than stop_poll
+    if let Ok(poll_msg_id) = bot_service.persist_load::<MessageId>(LUNCH_POLL_MSG_ID_KEY) {
+        bot_service.persist_remove(LUNCH_POLL_MSG_ID_KEY)?; // comes first because it's more reliable than stop_poll
         bot.stop_poll(msg.chat.id, poll_msg_id).await?;
 
-        let voters = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY)?;
+        let voters = bot_service.persist_load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY)?;
+        if voters.is_empty() {
+            bot.send_message(msg.chat.id, "Ніхто не хоче обідати.").await?;
+            return Ok(());
+        }
+
+        bot_service.persist_save(LUNCH_POLL_YES_VOTERS_KEY, VoterSet::new())?; // cleanup
+
         let mut voters = Vec::from_iter(voters);
 
         let mut rng = thread_rng();
@@ -183,15 +195,35 @@ async fn random(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::R
 
         let voters_str = voters
             .iter()
-            .map(|user| user.mention().unwrap_or(user.full_name()))
+            .enumerate()
+            .map(|(i, user)| format!("{}.\t{}", i + 1, user.mention().unwrap_or(user.full_name())))
             .collect::<Vec<_>>()
             .join("\n");
         request = bot.send_message(msg.chat.id, format!("Щасливці у порядку пріоритету:\n{voters_str}"));
     } else {
-        request = bot.send_message(msg.chat.id, "Створіть нове опитування, використовуючи команду /vote.");
+        request = bot.send_message(
+            msg.chat.id,
+            format!("Створіть нове опитування, використовуючи команду /{}.", Command::Lunch),
+        );
     }
 
     request.send().await?;
+    Ok(())
+}
+
+async fn cancel(bot: &Bot, msg: &Message, bot_service: &BotService) -> Result<(), anyhow::Error> {
+    if let Ok(poll_msg_id) = bot_service.persist_load::<MessageId>(LUNCH_POLL_MSG_ID_KEY) {
+        bot_service.persist_remove(LUNCH_POLL_MSG_ID_KEY)?; // comes first because it's more reliable than stop_poll
+        bot.stop_poll(msg.chat.id, poll_msg_id).await?;
+        bot.send_message(msg.chat.id, "Охрана, отмєна.").await?;
+    } else {
+        bot.send_message(
+            msg.chat.id,
+            format!("Створіть нове опитування, використовуючи команду /{}.", Command::Lunch),
+        )
+        .await?;
+    }
+
     Ok(())
 }
 
@@ -204,13 +236,13 @@ async fn poll_answer_handler(bot_service: BotService, _bot: Bot, answer: PollAns
 }
 
 fn poll_answer_handler_impl(bot_service: BotService, answer: PollAnswer) -> anyhow::Result<()> {
-    let poll_id = bot_service.persist.load::<String>(LUNCH_POLL_ID_KEY)?;
+    let poll_id = bot_service.persist_load::<String>(LUNCH_POLL_ID_KEY)?;
     if answer.poll_id == poll_id && answer.option_ids.as_slice() == [YES_ANSWER_ID] {
         log::info!("matching poll answer received: {:?}", answer);
 
-        let mut voters = bot_service.persist.load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY)?;
+        let mut voters = bot_service.persist_load::<VoterSet>(LUNCH_POLL_YES_VOTERS_KEY)?;
         voters.insert(answer.user);
-        bot_service.persist.save(LUNCH_POLL_YES_VOTERS_KEY, voters)?;
+        bot_service.persist_save(LUNCH_POLL_YES_VOTERS_KEY, voters)?;
     }
 
     Ok(())
