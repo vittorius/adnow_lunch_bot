@@ -112,7 +112,7 @@ enum Command {
     #[command(description = "Показати цей хелп")]
     Help,
     #[command(description = "Проголосувати за обід")]
-    Lunch,
+    Lunch, // TODO: protect from double-lunch invocation
     #[command(description = "Завершити голосування і вибрати переможців :)")]
     Go,
     #[command(description = "Скасувати поточне голосування")]
