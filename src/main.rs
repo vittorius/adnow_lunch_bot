@@ -1,12 +1,13 @@
 use std::{collections::HashSet, fmt};
 
+use axum::Router;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use serde::{Deserialize, Serialize};
 use shuttle_persist::PersistInstance;
 use shuttle_runtime::SecretStore;
 use teloxide::{
-    dispatching::UpdateHandler,
+    dispatching::{DefaultKey, UpdateHandler},
     payloads::SendPoll,
     prelude::*,
     requests::JsonRequest,
@@ -19,16 +20,6 @@ const LUNCH_POLL_MSG_ID_KEY: &str = "lunch_poll_msg_id";
 const LUNCH_POLL_ID_KEY: &str = "lunch_poll_id";
 const LUNCH_POLL_YES_VOTERS_KEY: &str = "lunch_poll_yes_voters";
 const YES_ANSWER_ID: i32 = 0;
-
-#[shuttle_runtime::main]
-async fn shuttle_main(
-    #[shuttle_runtime::Secrets] secret_store: SecretStore,
-    #[shuttle_persist::Persist] persist: PersistInstance,
-) -> Result<BotService, shuttle_runtime::Error> {
-    let token = secret_store.get("TELOXIDE_TOKEN").unwrap();
-
-    Ok(BotService { token, persist })
-}
 
 type VoterSet = HashSet<User>;
 
@@ -59,13 +50,8 @@ impl BotService {
     fn persist_remove(&self, key: &str) -> anyhow::Result<(), shuttle_persist::PersistError> {
         self.persist.remove(key)
     }
-}
 
-#[shuttle_runtime::async_trait]
-impl shuttle_runtime::Service for BotService {
-    async fn bind(self, _addr: std::net::SocketAddr) -> Result<(), shuttle_runtime::Error> {
-        log::info!("starting bot");
-
+    fn init_data_on_startup(&self) {
         if let Err(err) = self.persist_remove(LUNCH_POLL_MSG_ID_KEY) {
             match err {
                 shuttle_persist::PersistError::RemoveFile(_) => {
@@ -78,30 +64,46 @@ impl shuttle_runtime::Service for BotService {
         if let Err(err) = self.persist_save(LUNCH_POLL_YES_VOTERS_KEY, VoterSet::new()) {
             panic!("error initializing empty \"yes\" voters set: {err}")
         }
-
-        let bot = Bot::new(&self.token);
-
-        Dispatcher::builder(bot, build_update_handler())
-            .dependencies(dptree::deps![self])
-            // If no handler succeeded to handle an update, this closure will be called.
-            .default_handler(|upd| async move {
-                log::warn!("unhandled update: {:?}", upd);
-                // TODO: move `bot` here using Rc
-                // if let Some(chat) = upd.chat() {
-                //     bot.send_message(chat.id, "Невідома команда .");
-                // }
-            })
-            // If the dispatcher fails for some reason, execute this handler.
-            .error_handler(LoggingErrorHandler::with_custom_text(
-                "error in the teloxide dispatcher",
-            ))
-            .enable_ctrlc_handler()
-            .build()
-            .dispatch()
-            .await;
-
-        Ok(())
     }
+}
+#[shuttle_runtime::main]
+/// Using dummy Axum web app to make the bot run continuously. This web app doesn't handle any requests.
+async fn axum(
+    #[shuttle_runtime::Secrets] secret_store: SecretStore,
+    #[shuttle_persist::Persist] persist: PersistInstance,
+) -> shuttle_axum::ShuttleAxum {
+    let token = secret_store.get("TELOXIDE_TOKEN").unwrap();
+
+    let router = build_router(BotService { token, persist });
+
+    Ok(router.into())
+}
+
+fn build_router(bot_service: BotService) -> Router {
+    log::info!("starting bot");
+
+    bot_service.init_data_on_startup();
+
+    let bot = Bot::new(&bot_service.token);
+
+    let mut dispatcher = build_bot_dispatcher(bot, bot_service);
+
+    tokio::spawn(async move {
+        dispatcher.dispatch().await;
+    });
+
+    Router::new()
+}
+
+fn build_bot_dispatcher(bot: Bot, bot_service: BotService) -> Dispatcher<Bot, RequestError, DefaultKey> {
+    Dispatcher::builder(bot, build_update_handler())
+        .dependencies(dptree::deps![bot_service])
+        // If the dispatcher fails for some reason, execute this handler.
+        .error_handler(LoggingErrorHandler::with_custom_text(
+            "error in the teloxide dispatcher",
+        ))
+        .enable_ctrlc_handler()
+        .build()
 }
 
 #[derive(BotCommands, Clone, Debug)]
