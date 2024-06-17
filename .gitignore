@@ -19,3 +19,6 @@ Secrets.*
 
 # Direnv
 .envrc
+
+# macOS
+.DS_Store
