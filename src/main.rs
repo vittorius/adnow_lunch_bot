@@ -112,7 +112,7 @@ enum Command {
     #[command(description = "Показати цей хелп")]
     Help,
     #[command(description = "Проголосувати за обід")]
-    Lunch, // TODO: protect from double-lunch invocation
+    Lunch,
     #[command(description = "Завершити голосування і вибрати переможців :)")]
     Go,
     #[command(description = "Скасувати поточне голосування")]
@@ -161,6 +161,11 @@ async fn help(bot: &Bot, msg: &Message) -> anyhow::Result<()> {
 }
 
 async fn lunch(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::Result<()> {
+    if bot_service.persist_load::<MessageId>(LUNCH_POLL_MSG_ID_KEY).is_ok() {
+        bot.send_message(msg.chat.id, "Будь ласка, завершіть поточне голосування.").await?;
+        return Ok(())
+    }
+
     let send_poll_payload = SendPoll::new(msg.chat.id, "Обід?", ["Так".into(), "Ні".into()]).is_anonymous(false);
     let request = JsonRequest::new(bot.clone(), send_poll_payload);
     let msg = request.await?;
