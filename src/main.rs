@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 
 use axum::Router;
 use db::LunchPollRepository;
@@ -14,7 +14,7 @@ use teloxide::{
     payloads::SendPoll,
     prelude::*,
     requests::JsonRequest,
-    types::{MessageId, User},
+    types::MessageId,
     utils::command::BotCommands,
     RequestError,
 };
@@ -90,7 +90,7 @@ impl BotService {
         self.repo.get_poll_by_chat_id(chat_id).await
     }
 
-    fn get_poll_by_poll_id(&self, poll_id: &str) -> anyhow::Result<Option<LunchPoll>> {
+    fn get_poll_by_poll_id(&self, _poll_id: &str) -> anyhow::Result<Option<LunchPoll>> {
         todo!()
     }
 
@@ -98,7 +98,7 @@ impl BotService {
         self.repo.delete_poll(id).await
     }
 
-    fn save_poll(&self, poll: &LunchPoll) -> anyhow::Result<()> {
+    fn save_poll(&self, _poll: &LunchPoll) -> anyhow::Result<()> {
         todo!()
     }
 }

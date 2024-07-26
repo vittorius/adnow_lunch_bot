@@ -1,8 +1,8 @@
 use serde::Deserialize;
-use shuttle_shared_db::Postgres;
-use sqlx::{types::Json, Decode, Encode, FromRow, Type};
-use std::{collections::HashSet, hash::Hash};
-use teloxide::types::{ChatId, MessageId, User, UserId};
+
+use sqlx::{types::Json, Encode, FromRow, Type};
+
+use teloxide::types::{User};
 
 #[derive(Type, Deserialize)]
 pub struct Voter {

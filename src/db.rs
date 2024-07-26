@@ -1,7 +1,7 @@
-use std::time::SystemTime;
+
 
 use anyhow::Ok;
-use sqlx::{prelude::Type, query, query_as, types::chrono::Utc, Database, Encode, PgPool, Pool};
+use sqlx::{query, query_as, types::chrono::Utc, PgPool};
 // use sqlx_postgres::Postgres;
 use teloxide::types::{ChatId, MessageId};
 
