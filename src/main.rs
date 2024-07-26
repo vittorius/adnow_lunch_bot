@@ -82,8 +82,8 @@ impl BotService {
             .map(|poll_opt| poll_opt.is_some())
     }
 
-    fn create_poll(&self, poll_id: &str, poll_msg_id: MessageId, chat_id: ChatId) -> anyhow::Result<()> {
-        todo!()
+    async fn create_poll(&self, poll_id: &str, poll_msg_id: MessageId, chat_id: ChatId) -> anyhow::Result<()> {
+        self.repo.create_poll(poll_id, poll_msg_id, chat_id).await
     }
 
     async fn get_poll_by_chat_id(&self, chat_id: ChatId) -> anyhow::Result<Option<LunchPoll>> {
@@ -94,8 +94,8 @@ impl BotService {
         todo!()
     }
 
-    fn remove_poll(&self, poll_msg_id: i64) -> anyhow::Result<()> {
-        todo!()
+    async fn delete_poll(&self, id: i64) -> anyhow::Result<()> {
+        self.repo.delete_poll(id).await
     }
 
     fn save_poll(&self, poll: &LunchPoll) -> anyhow::Result<()> {
@@ -238,7 +238,7 @@ async fn lunch_cmd(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow
         .expect("Unable to get Poll from the poll Message")
         .id
         .as_str();
-    bot_service.create_poll(poll_id, poll_msg.id, msg.chat.id)?;
+    bot_service.create_poll(poll_id, poll_msg.id, msg.chat.id).await?;
 
     Ok(())
 }
@@ -317,7 +317,7 @@ async fn go_cmd(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyhow::R
     request.send().await?;
 
     if let Some(poll) = poll_to_remove {
-        bot_service.remove_poll(poll.id)?; // remove the poll from the storage only after all work is finished
+        bot_service.delete_poll(poll.id).await?; // remove the poll from the storage only after all work is finished
     }
 
     Ok(())
@@ -337,8 +337,8 @@ async fn cancel_cmd(bot: &Bot, msg: &Message, bot_service: &BotService) -> anyho
     // }
 
     if let Some(poll) = bot_service.get_poll_by_chat_id(msg.chat.id).await? {
-        bot_service.remove_poll(poll.id)?;
         bot.stop_poll(msg.chat.id, MessageId(poll.poll_msg_id)).await?;
+        bot_service.delete_poll(poll.id).await?;
         bot.send_message(msg.chat.id, "Охрана, отмєна.").await?;
     } else {
         bot.send_message(

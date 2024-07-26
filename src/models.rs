@@ -31,10 +31,12 @@ impl ToVoter for User {
     }
 }
 
-#[derive(FromRow, Encode, Decode)]
+#[derive(FromRow)]
 pub struct LunchPoll {
     pub id: i64, // TODO: primary key
+    #[sqlx(rename = "tg_poll_id")]
     pub poll_id: String,
+    #[sqlx(rename = "tg_poll_msg_id")]
     pub poll_msg_id: i32,
     // chat_id: ChatId,
     pub yes_voters: Json<Vec<Voter>>, // TODO: #[sqlx(json)]
