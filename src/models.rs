@@ -1,10 +1,10 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use sqlx::{types::Json, Encode, FromRow, Type};
 
-use teloxide::types::{User};
+use teloxide::types::User;
 
-#[derive(Type, Deserialize)]
+#[derive(Type, Serialize, Deserialize)]
 pub struct Voter {
     user_id: i64,
     pub display_name: String,
@@ -33,11 +33,11 @@ impl ToVoter for User {
 
 #[derive(FromRow)]
 pub struct LunchPoll {
-    pub id: i64, // TODO: primary key
+    pub id: i64,
     #[sqlx(rename = "tg_poll_id")]
     pub poll_id: String,
     #[sqlx(rename = "tg_poll_msg_id")]
     pub poll_msg_id: i32,
-    // chat_id: ChatId,
-    pub yes_voters: Json<Vec<Voter>>, // TODO: #[sqlx(json)]
+    // TODO: #[sqlx(json)]
+    pub yes_voters: Json<Vec<Voter>>,
 }
