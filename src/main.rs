@@ -1,14 +1,13 @@
-use std::{fmt, sync::Arc};
+use std::fmt;
 
 use axum::Router;
 use db::LunchPollRepository;
 use models::{LunchPoll, ToVoter};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use serde::{Deserialize, Serialize};
-use shuttle_persist::PersistInstance;
+
 use shuttle_runtime::SecretStore;
-use sqlx::ConnectOptions;
+
 use teloxide::{
     dispatching::{DefaultKey, UpdateHandler},
     payloads::SendPoll,

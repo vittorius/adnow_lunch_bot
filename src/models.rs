@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use sqlx::{types::Json, Encode, FromRow, Type};
+use sqlx::{types::Json, FromRow, Type};
 
 use teloxide::types::User;
 
