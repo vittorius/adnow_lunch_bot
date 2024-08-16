@@ -16,5 +16,3 @@ serde = "1.0.203"
 serde_json = "1.0.117"
 axum = "0.7.5"
 shuttle-axum = "0.46.0"
-shuttle-shared-db = { version = "0.46.0", features = ["postgres", "sqlx"] }
-sqlx = { version = "0.7", features = ["runtime-tokio", "tls-rustls", "chrono"] }
