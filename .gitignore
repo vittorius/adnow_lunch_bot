@@ -22,3 +22,10 @@ Secrets.*
 
 # macOS
 .DS_Store
+
+bin/cargo-sqlx
+bin/sqlx
+
+# Cargo local installs metadata
+.crates.toml
+.crates2.json
