@@ -3,13 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use teloxide::{types::Message, Bot};
 
 use teloxide::{
-    dispatching::{DefaultKey, UpdateHandler},
-    payloads::SendPoll,
     prelude::*,
-    requests::JsonRequest,
-    types::MessageId,
     utils::command::BotCommands,
-    RequestError,
 };
 use crate::command_handlers::{cancel_cmd, go_cmd, help_cmd, lunch_cmd};
 use crate::error_handling::{handle_endpoint_err, log_endpoint_err};

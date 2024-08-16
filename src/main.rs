@@ -1,21 +1,18 @@
-use std::fmt;
+
 
 use axum::Router;
 use db::LunchPollRepository;
 use message_handlers::{command_handler, poll_answer_handler, Command};
-use models::{LunchPoll, ToVoter};
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use models::LunchPoll;
+
+
 
 use shuttle_runtime::SecretStore;
 
 use teloxide::{
     dispatching::{DefaultKey, UpdateHandler},
-    payloads::SendPoll,
     prelude::*,
-    requests::JsonRequest,
     types::MessageId,
-    utils::command::BotCommands,
     RequestError,
 };
 
