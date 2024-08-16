@@ -6,7 +6,7 @@ use crate::models::LunchPoll;
 
 // TODO: re-implement using <'a> lifetime and a reference to PgPool
 #[derive(Clone)]
-pub struct LunchPollRepository {
+pub(crate) struct LunchPollRepository {
     pool: PgPool,
 }
 
