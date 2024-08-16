@@ -5,7 +5,7 @@ use sqlx::{types::Json, FromRow, Type};
 use teloxide::types::User;
 
 #[derive(Type, Serialize, Deserialize)]
-pub struct Voter {
+pub(crate) struct Voter {
     user_id: i64,
     pub display_name: String,
 }
@@ -18,7 +18,7 @@ impl PartialEq for Voter {
 
 impl Eq for Voter {}
 
-pub trait ToVoter {
+pub(crate) trait ToVoter {
     fn to_voter(&self) -> Voter;
 }
 
@@ -32,7 +32,7 @@ impl ToVoter for User {
 }
 
 #[derive(FromRow)]
-pub struct LunchPoll {
+pub(crate) struct LunchPoll {
     pub id: i64,
     #[sqlx(rename = "tg_poll_id")]
     pub poll_id: String,
