@@ -1,11 +1,7 @@
-
-
 use axum::Router;
 use db::LunchPollRepository;
 use message_handlers::{command_handler, poll_answer_handler, Command};
 use models::LunchPoll;
-
-
 
 use shuttle_runtime::SecretStore;
 
@@ -16,13 +12,12 @@ use teloxide::{
     RequestError,
 };
 
+mod command_handlers;
 mod db;
-mod models;
 mod error_handling;
 mod message_handlers;
-mod command_handlers;
+mod models;
 mod poll_handlers;
-
 
 // TODO: finish this extension tract
 trait BotExt {

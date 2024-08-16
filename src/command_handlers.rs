@@ -1,5 +1,12 @@
 use rand::thread_rng;
-use teloxide::{payloads::{SendPoll, SendPollSetters}, prelude::Requester, requests::JsonRequest, types::{Message, MessageId}, utils::command::BotCommands, Bot, RequestError};
+use teloxide::{
+    payloads::{SendPoll, SendPollSetters},
+    prelude::Requester,
+    requests::JsonRequest,
+    types::{Message, MessageId},
+    utils::command::BotCommands,
+    Bot, RequestError,
+};
 
 use crate::{message_handlers::Command, BotService};
 

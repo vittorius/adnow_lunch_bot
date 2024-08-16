@@ -2,14 +2,11 @@ use std::fmt::{self, Display, Formatter};
 
 use teloxide::{types::Message, Bot};
 
-use teloxide::{
-    prelude::*,
-    utils::command::BotCommands,
-};
 use crate::command_handlers::{cancel_cmd, go_cmd, help_cmd, lunch_cmd};
 use crate::error_handling::{handle_endpoint_err, log_endpoint_err};
 use crate::poll_handlers::process_poll_answer;
-use crate::{BotService};
+use crate::BotService;
+use teloxide::{prelude::*, utils::command::BotCommands};
 
 #[derive(BotCommands, Clone, Debug)]
 #[command(rename_rule = "lowercase", description = "Підтримуються наступні команди:")]
