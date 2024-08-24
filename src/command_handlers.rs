@@ -1,4 +1,4 @@
-use rand::thread_rng;
+use rand::{seq::SliceRandom, thread_rng};
 use teloxide::{
     payloads::{SendPoll, SendPollSetters},
     prelude::Requester,
@@ -9,8 +9,6 @@ use teloxide::{
 };
 
 use crate::{message_handlers::Command, BotService};
-
-use rand::seq::SliceRandom;
 
 pub(crate) async fn help_cmd(bot: &Bot, msg: &Message) -> anyhow::Result<()> {
     bot.send_message(msg.chat.id, Command::descriptions().to_string())
@@ -103,4 +101,21 @@ pub(crate) async fn cancel_cmd(bot: &Bot, msg: &Message, bot_service: &BotServic
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::build_update_handler;
+
+    #[tokio::test]
+    async fn test_help_sends_expected_message() {
+        let message = MockMessageText::new().text("/help");
+        let bot = MockBot::new(message, build_update_handler());
+        // Sends the message as if it was from a user
+        bot.dispatch().await;
+
+        let responses = bot.get_responses();
+        let message = responses.sent_messages.last().expect("No sent messages were detected!");
+        assert_eq!(message.text(), Some(Command::descriptions().to_string()));
+    }
 }

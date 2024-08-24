@@ -105,7 +105,7 @@ fn build_bot_dispatcher(bot: Bot, bot_service: BotService) -> Dispatcher<Bot, Re
         .build()
 }
 
-fn build_update_handler() -> UpdateHandler<RequestError> {
+pub(crate) fn build_update_handler() -> UpdateHandler<RequestError> {
     // TODO: add initial filter if chat is a group
     dptree::entry()
         .branch(
