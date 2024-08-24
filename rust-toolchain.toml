@@ -1,2 +1,2 @@
 [toolchain]
-channel = "1.76-aarch64-apple-darwin"
+channel = "1.79-aarch64-apple-darwin"
