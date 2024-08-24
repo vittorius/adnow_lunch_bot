@@ -1,12 +1,18 @@
 use rand::thread_rng;
 use teloxide::{
-    payloads::{SendPoll, SendPollSetters},
+    payloads::{self, SendMessage, SendPoll, SendPollSetters},
     prelude::Requester,
     requests::JsonRequest,
-    types::{Message, MessageId},
+    types::{Message, MessageId, Recipient},
     utils::command::BotCommands,
-    Bot, RequestError,
+    RequestError,
 };
+
+// #[cfg(not(test))]
+use teloxide::Bot;
+
+// #[cfg(test)]
+// use crate::testing::MockBot as Bot;
 
 use crate::{message_handlers::Command, BotService};
 
@@ -103,4 +109,38 @@ pub(crate) async fn cancel_cmd(bot: &Bot, msg: &Message, bot_service: &BotServic
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use sqlx::types::chrono::Utc;
+    use teloxide::{
+        types::{Chat, ChatId, ChatKind, ChatPublic, Message, MessageCommon, MessageId, MessageKind},
+        utils::command::BotCommands,
+    };
+
+    use crate::{message_handlers::Command, testing::factories::MessageFactory};
+
+    use super::help_cmd;
+
+    // TODO: use https://lib.rs/crates/beaver for factories
+    #[tokio::test]
+    async fn test_help_cmd_sends_expected_message() {
+        // let mock_bot = MockBot::new();
+
+        // help_cmd(
+        //     &mock_bot,
+        //     // TODO: add factory
+        //     testing::factories::MessageFactory::build(1),
+        // )
+        // .await
+        // .unwrap();
+
+        // assert_eq!(
+        //     mock_bot.send_message_calls.borrow()[..],
+        //     [(ChatId(1), Command::descriptions().to_string())]
+        // );
+
+        assert_eq!(MessageFactory::build(1).id, MessageId(1));
+    }
 }

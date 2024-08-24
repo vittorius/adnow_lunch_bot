@@ -18,6 +18,8 @@ mod error_handling;
 mod message_handlers;
 mod models;
 mod poll_handlers;
+#[cfg(test)]
+mod testing;
 
 // TODO: finish this extension tract
 trait BotExt {
