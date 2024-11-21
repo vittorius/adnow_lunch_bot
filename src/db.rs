@@ -1,8 +1,7 @@
+use crate::models::LunchPoll;
 use anyhow::Ok;
 use sqlx::{query, query_as, types::chrono::Utc, PgPool};
 use teloxide::types::{ChatId, MessageId};
-
-use crate::models::LunchPoll;
 
 // TODO: re-implement using <'a> lifetime and a reference to PgPool
 #[derive(Clone)]

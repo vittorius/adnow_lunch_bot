@@ -1,4 +1,5 @@
-use rand::thread_rng;
+use crate::{message_handlers::Command, BotService};
+use rand::{seq::SliceRandom, thread_rng};
 use teloxide::{
     payloads::{SendPoll, SendPollSetters},
     prelude::Requester,
@@ -7,10 +8,6 @@ use teloxide::{
     utils::command::BotCommands,
     Bot, RequestError,
 };
-
-use crate::{message_handlers::Command, BotService};
-
-use rand::seq::SliceRandom;
 
 pub(crate) async fn help_cmd(bot: &Bot, msg: &Message) -> anyhow::Result<()> {
     bot.send_message(msg.chat.id, Command::descriptions().to_string())

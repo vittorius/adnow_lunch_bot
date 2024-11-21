@@ -2,14 +2,11 @@ use axum::Router;
 use db::LunchPollRepository;
 use message_handlers::{command_handler, poll_answer_handler, Command};
 use models::LunchPoll;
-
 use shuttle_runtime::SecretStore;
-
 use teloxide::{
     dispatching::{DefaultKey, UpdateHandler},
     prelude::*,
     types::MessageId,
-    RequestError,
 };
 
 mod command_handlers;

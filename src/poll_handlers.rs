@@ -1,6 +1,5 @@
-use teloxide::types::PollAnswer;
-
 use crate::{models::ToVoter, BotService};
+use teloxide::types::PollAnswer;
 
 const YES_ANSWER_ID: i32 = 0;
 

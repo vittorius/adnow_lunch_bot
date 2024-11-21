@@ -1,7 +1,5 @@
 use serde::{Deserialize, Serialize};
-
 use sqlx::{types::Json, FromRow, Type};
-
 use teloxide::types::User;
 
 #[derive(Type, Serialize, Deserialize)]
