@@ -15,8 +15,10 @@ mod error_handling;
 mod message_handlers;
 mod models;
 mod poll_handlers;
+#[cfg(test)]
+mod testing;
 
-// TODO: finish this extension tract
+// TODO: finish this extension trait
 trait BotExt {
     fn stop_poll_ignoring_api_error(&self);
 }
