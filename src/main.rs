@@ -60,6 +60,8 @@ impl BotService {
     }
 }
 
+type HandlerResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
 #[shuttle_runtime::main]
 /// Using dummy Axum web app to make the bot run continuously. This web app doesn't handle any requests.
 async fn axum(
@@ -90,7 +92,10 @@ fn build_router(bot_service: BotService) -> Router {
     Router::new()
 }
 
-fn build_bot_dispatcher(bot: Bot, bot_service: BotService) -> Dispatcher<Bot, RequestError, DefaultKey> {
+fn build_bot_dispatcher(
+    bot: Bot,
+    bot_service: BotService,
+) -> Dispatcher<Bot, Box<dyn std::error::Error + Send + Sync + 'static>, DefaultKey> {
     Dispatcher::builder(bot, build_update_handler())
         .dependencies(dptree::deps![bot_service])
         .default_handler(|upd| async move {
@@ -104,7 +109,7 @@ fn build_bot_dispatcher(bot: Bot, bot_service: BotService) -> Dispatcher<Bot, Re
         .build()
 }
 
-fn build_update_handler() -> UpdateHandler<RequestError> {
+pub(crate) fn build_update_handler() -> UpdateHandler<Box<dyn std::error::Error + Send + Sync + 'static>> {
     // TODO: add initial filter if chat is a group
     dptree::entry()
         .branch(

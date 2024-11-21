@@ -25,12 +25,7 @@ impl Display for Command {
     }
 }
 
-pub(crate) async fn command_handler(
-    bot_service: BotService,
-    bot: Bot,
-    msg: Message,
-    cmd: Command,
-) -> ResponseResult<()> {
+pub(crate) async fn command_handler(bot_service: BotService, bot: Bot, msg: Message, cmd: Command) -> HandlerResult {
     use Command::*;
 
     let cmd_result = match cmd {
@@ -47,7 +42,7 @@ pub(crate) async fn command_handler(
     Ok(())
 }
 
-pub(crate) async fn poll_answer_handler(bot_service: BotService, _bot: Bot, answer: PollAnswer) -> ResponseResult<()> {
+pub(crate) async fn poll_answer_handler(bot_service: BotService, _bot: Bot, answer: PollAnswer) -> HandlerResult {
     if let Err(err) = process_poll_answer(bot_service, answer).await {
         log_endpoint_err(&err);
     }
