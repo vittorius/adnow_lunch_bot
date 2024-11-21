@@ -101,3 +101,33 @@ pub(crate) async fn cancel_cmd(bot: &Bot, msg: &Message, bot_service: &BotServic
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::db::LunchPollRepository;
+    use crate::{build_update_handler, BotService};
+    use crate::message_handlers::Command;
+    use sqlx::PgPool;
+    use teloxide::dptree;
+    use teloxide::utils::command::BotCommands;
+    use teloxide_tests::{MockBot, MockMessageText};
+
+    fn get_bot_service(db_pool: PgPool) -> BotService {
+        BotService {
+            token: "".to_string(),
+            repo: LunchPollRepository::new(db_pool),
+        }
+    }
+
+    #[sqlx::test]
+    async fn test_help_sends_expected_message(db_pool: PgPool) {
+        let message = MockMessageText::new().text("/help");
+        let bot = MockBot::new(message, build_update_handler());
+        bot.dependencies(dptree::deps![get_bot_service(db_pool)]);
+        bot.dispatch().await;
+
+        let responses = bot.get_responses();
+        let message = responses.sent_messages.last().expect("No sent messages were detected!");
+        assert_eq!(message.text(), Some(Command::descriptions().to_string().as_str()));
+    }
+}
