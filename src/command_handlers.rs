@@ -104,30 +104,90 @@ pub(crate) async fn cancel_cmd(bot: &Bot, msg: &Message, bot_service: &BotServic
 
 #[cfg(test)]
 mod tests {
-    use crate::db::LunchPollRepository;
-    use crate::{build_update_handler, BotService};
     use crate::message_handlers::Command;
+    use crate::{build_update_handler, BotService};
+    use delegate::delegate;
     use sqlx::PgPool;
     use teloxide::dptree;
+    use teloxide::types::{ChatId, MessageId};
     use teloxide::utils::command::BotCommands;
-    use teloxide_tests::{MockBot, MockMessageText};
+    use teloxide_tests::{IntoUpdate, MockBot, MockMessageText, Responses};
 
-    fn get_bot_service(db_pool: PgPool) -> BotService {
-        BotService {
-            token: "".to_string(),
-            repo: LunchPollRepository::new(db_pool),
+    struct Environment {
+        bot: MockBot,
+        bot_service: BotService,
+        chat_id: Option<ChatId>,
+    }
+
+    impl Environment {
+        fn new<TUpdate: IntoUpdate>(db_pool: PgPool, update: TUpdate) -> Self {
+            let bot_service = BotService::new("".to_string(), db_pool);
+            let bot = MockBot::new(update, build_update_handler());
+            bot.dependencies(dptree::deps![bot_service.clone()]);
+
+            let chat_id = bot.updates.lock().unwrap().last().unwrap().chat().map(|chat| chat.id);
+            Self {
+                bot,
+                bot_service,
+                chat_id,
+            }
+        }
+
+        delegate! {
+            to self.bot {
+                #[call(dispatch)]
+                pub async fn bot_dispatch(&self);
+
+                #[call(get_responses)]
+                pub fn bot_responses(&self) -> Responses;
+            }
+        }
+
+        async fn when_there_is_an_incomplete_poll(&self) {
+            self.bot_service
+                .create_poll(
+                    "",
+                    MessageId(0),
+                    self.chat_id
+                        .expect("Previous update did not have a chat associated with it"),
+                )
+                .await
+                .expect("Failed to create a fixture poll");
         }
     }
 
     #[sqlx::test]
     async fn test_help_sends_expected_message(db_pool: PgPool) {
         let message = MockMessageText::new().text("/help");
-        let bot = MockBot::new(message, build_update_handler());
-        bot.dependencies(dptree::deps![get_bot_service(db_pool)]);
-        bot.dispatch().await;
+        let env = Environment::new(db_pool, message);
+        env.bot_dispatch().await;
 
-        let responses = bot.get_responses();
+        let responses = env.bot_responses();
+        assert_eq!(responses.sent_messages.len(), 1);
         let message = responses.sent_messages.last().expect("No sent messages were detected!");
         assert_eq!(message.text(), Some(Command::descriptions().to_string().as_str()));
+    }
+
+    // lunch_cmd tests:
+    // + when there is already an incomplete poll
+    //   + it sends a notice and exits
+    // - when there is no incomplete poll
+    //   - it creates a new and sends it
+    //      - when the poll is sent successfully
+    //         - it stores the poll
+    //      - when the poll fails to be sent
+    //         - it panics with the expected error
+
+    #[sqlx::test]
+    async fn test_lunch_cmd_when_there_is_an_incomplete_poll_sends_notice_and_exits(db_pool: PgPool) {
+        let message = MockMessageText::new().text("/lunch");
+        let env = Environment::new(db_pool, message);
+        env.when_there_is_an_incomplete_poll().await;
+        env.bot_dispatch().await;
+
+        let responses = env.bot_responses();
+        assert_eq!(responses.sent_messages.len(), 1);
+        let message = responses.sent_messages.last().expect("No sent messages were detected!");
+        assert_eq!(message.text(), Some("Будь ласка, завершіть поточне голосування."));
     }
 }

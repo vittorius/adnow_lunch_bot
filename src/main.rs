@@ -3,6 +3,7 @@ use db::LunchPollRepository;
 use message_handlers::{command_handler, poll_answer_handler, Command};
 use models::LunchPoll;
 use shuttle_runtime::SecretStore;
+use sqlx::PgPool;
 use teloxide::{
     dispatching::{DefaultKey, UpdateHandler},
     prelude::*,
@@ -32,6 +33,13 @@ struct BotService {
 }
 
 impl BotService {
+    fn new(token: String, db_pool: PgPool) -> Self {
+        Self {
+            token,
+            repo: LunchPollRepository::new(db_pool),
+        }
+    }
+
     async fn incomplete_poll_exists(&self, chat_id: ChatId) -> anyhow::Result<bool> {
         self.repo
             .get_poll_by_chat_id(chat_id)
@@ -70,10 +78,7 @@ async fn axum(
 ) -> shuttle_axum::ShuttleAxum {
     let token = secret_store.get("TELOXIDE_TOKEN").unwrap();
 
-    let router = build_router(BotService {
-        token,
-        repo: LunchPollRepository::new(db_pool),
-    });
+    let router = build_router(BotService::new(token, db_pool));
 
     log::info!("Starting bot...");
 
