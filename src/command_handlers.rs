@@ -143,7 +143,7 @@ mod tests {
             }
         }
 
-        async fn when_there_is_an_incomplete_poll(&self) {
+        async fn create_incomplete_poll(&self) {
             self.bot_service
                 .create_poll(
                     "",
@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[sqlx::test]
-    async fn test_help_sends_expected_message(db_pool: PgPool) {
+    async fn help_cmd_sends_expected_message(db_pool: PgPool) {
         let message = MockMessageText::new().text("/help");
         let env = Environment::new(db_pool, message);
         env.bot_dispatch().await;
@@ -166,6 +166,19 @@ mod tests {
         assert_eq!(responses.sent_messages.len(), 1);
         let message = responses.sent_messages.last().expect("No sent messages were detected!");
         assert_eq!(message.text(), Some(Command::descriptions().to_string().as_str()));
+    }
+
+    #[sqlx::test]
+    async fn on_incomplete_poll_lunch_cmd_sends_notice_and_exits(db_pool: PgPool) {
+        let message = MockMessageText::new().text("/lunch");
+        let env = Environment::new(db_pool, message);
+        env.create_incomplete_poll().await;
+        env.bot_dispatch().await;
+
+        let responses = env.bot_responses();
+        assert_eq!(responses.sent_messages.len(), 1);
+        let message = responses.sent_messages.last().expect("No sent messages were detected!");
+        assert_eq!(message.text(), Some("Будь ласка, завершіть поточне голосування."));
     }
 
     // lunch_cmd tests:
@@ -177,17 +190,4 @@ mod tests {
     //         - it stores the poll
     //      - when the poll fails to be sent
     //         - it panics with the expected error
-
-    #[sqlx::test]
-    async fn test_lunch_cmd_when_there_is_an_incomplete_poll_sends_notice_and_exits(db_pool: PgPool) {
-        let message = MockMessageText::new().text("/lunch");
-        let env = Environment::new(db_pool, message);
-        env.when_there_is_an_incomplete_poll().await;
-        env.bot_dispatch().await;
-
-        let responses = env.bot_responses();
-        assert_eq!(responses.sent_messages.len(), 1);
-        let message = responses.sent_messages.last().expect("No sent messages were detected!");
-        assert_eq!(message.text(), Some("Будь ласка, завершіть поточне голосування."));
-    }
 }
