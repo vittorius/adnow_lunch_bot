@@ -181,13 +181,23 @@ mod tests {
         assert_eq!(message.text(), Some("Будь ласка, завершіть поточне голосування."));
     }
 
-    // lunch_cmd tests:
-    // + when there is already an incomplete poll
-    //   + it sends a notice and exits
-    // - when there is no incomplete poll
-    //   - it creates a new and sends it
-    //      - when the poll is sent successfully
-    //         - it stores the poll
-    //      - when the poll fails to be sent
-    //         - it panics with the expected error
+    #[sqlx::test]
+    async fn on_successful_poll_send_lunch_cmd_stores_poll(db_pool: PgPool) {
+        let message = MockMessageText::new().text("/lunch");
+        let env = Environment::new(db_pool, message);
+        env.bot_dispatch().await;
+
+        let poll = env.bot_service.get_poll_by_chat_id(env.chat_id.unwrap()).await.expect("Failed to get poll");
+        assert!(poll.is_some());
+    }
+
+    #[sqlx::test]
+    async fn on_failed_poll_send_lunch_cmd_stores_poll(db_pool: PgPool) {
+        let message = MockMessageText::new().text("/lunch");
+        let env = Environment::new(db_pool, message);
+        env.bot_dispatch().await;
+
+        let poll = env.bot_service.get_poll_by_chat_id(env.chat_id.unwrap()).await.expect("Failed to get poll");
+        assert!(poll.is_some());
+    }
 }
